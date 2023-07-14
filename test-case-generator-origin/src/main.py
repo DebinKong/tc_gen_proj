@@ -26,6 +26,68 @@ def task(bubble_matrix, constraint, bubble_input, idx, number=1):
     c = convert(output, bubble_input[idx].copy())
     return c
 
+def revised(input, constraint):
+    _del = set()
+    or_cons = list()
+    for c in constraint:
+        if '_LENGTH' in c:
+            _del.add(c)
+            upper = 999
+            lower = 0
+            field = None
+            while '_LENGTH' in c:
+                idx = c.find('_LENGTH')
+                c = c[idx+8:]
+                idx = c.find(')')
+                field = c[:idx]
+                c = c[idx+2:]
+                idx = c.find('&&')
+                if c[0] == '<':
+                    if c[1] == ' ':
+                        upper = int(c[1: idx]) - 1
+                    if c[1] == '=':
+                        upper = int(c[3: idx])
+                if c[0] == '>':
+                    if c[1] == ' ':
+                        lower = int(c[1: idx]) + 1
+                    if c[1] == '=':
+                        lower = int(c[3: idx])
+                c = c[idx+3:]
+            num = random.randint(lower, upper)
+            t = input.pop(field)
+            idx = t.find('_ptr')
+            t = t[: idx]
+            for i in range(num):
+                input[field+'['+str(i)+']'] = t
+        else:
+            if '||' in c:
+                _del.add(c)
+                _c = ''.join(c)
+                temp = list()
+                while '||' in _c:
+                    idx = _c.find('||')
+                    temp.append(_c[:idx])
+                    _c = _c[idx+2:]
+                temp.append(_c)
+                index = random.randint(0, len(temp)-1)
+                constraint.append(temp[index])
+                or_cons.append(temp[index])
+            if '&&' in c and c not in _del:
+                _del.add(c)
+                _c = ''.join(c)
+                while '&&' in _c:
+                    idx = _c.find('&&')
+                    constraint.append(_c[:idx])
+                    if c in or_cons:
+                        or_cons.append(_c[:idx])
+                    _c = _c[idx+2:]
+                constraint.append(_c)
+                if c in or_cons:
+                    or_cons.remove(c)
+                    or_cons.append(_c)
+    for c in _del:
+        constraint.remove(c)
+    return input, constraint, or_cons
 
 def mutate(constraint, or_cons):
     while True:
@@ -87,14 +149,17 @@ if __name__ == "__main__":
 
     print("清理测试用例文件夹，准备解析原始文件")
 
-    # 读取原始文件，解析出输入和约束
+    # 读取原始文件，解析出输入变量和约束
     time_start = time.time()
     input, constraint = analyze_code("originFile.c")
-    input, pos_constraint, or_cons = revised(input, constraint)
-
-    neg_constraint = mutate(pos_constraint.copy(), or_cons)
+    # 对原始约束进行化简，拆分&&、|｜约束，生成正例约束
+    input, pos_constraint, or_constraint = revised(input, constraint.copy())
+    # 随机从正例约束中选择一条取非，生成负例约束
+    neg_constraint = mutate(pos_constraint.copy(), or_constraint)
+    # 生成约束-变量关联矩阵
     pos_matrix = gen_matrix(input, pos_constraint)
     neg_matrix = gen_matrix(input, neg_constraint)
+    # 拆分关联矩阵
     pos_bubble_input, pos_bubble_matrix = matrix_split(pos_matrix, input, pos_constraint)
     neg_bubble_input, neg_bubble_matrix = matrix_split(neg_matrix, input, neg_constraint)
     pos_n = len(pos_bubble_matrix)
