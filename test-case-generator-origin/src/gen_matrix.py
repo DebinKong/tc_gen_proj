@@ -3,56 +3,58 @@ import random
 import numpy as np
 
  
-def analysis_constraint(arg, constraint):
+def analyze_constraint(arg, constraint):
     if arg == None:
         return
-    arg_left, arg_right, arg_op = analysis_constraint_helper(arg)
-    analysis_constraint(arg_left, constraint)
+    arg_left, arg_right, arg_op = analyze_constraint_helper(arg)
+    analyze_constraint(arg_left, constraint)
     constraint.append(arg_op)
     constraint.append(' ')
-    analysis_constraint(arg_right, constraint)
+    analyze_constraint(arg_right, constraint)
 
-def analysis_constraint_helper(arg):
+def analyze_constraint_helper(arg):
+    if arg.__class__.__name__ == 'Constant':
+        return None, None, arg.value
+    if arg.__class__.__name__ == 'ID':
+        return None, None, arg.name
+    if arg.__class__.__name__ == 'UnaryOp':
+        _, _, n = analyze_constraint_helper(arg.expr)
+        return None, None, '-' + n
     if arg.__class__.__name__ == 'BinaryOp':
         return arg.left, arg.right, arg.op
+    if arg.__class__.__name__ == 'ArrayRef':
+        _, _, n = analyze_constraint_helper(arg.name)
+        _, _, f = analyze_constraint_helper(arg.subscript)
+        return None, None, n + '[' + f + ']'
+    if arg.__class__.__name__ == 'StructRef':
+        f = arg.field.name
+        _, _, n = analyze_constraint_helper(arg.name)
+        return None, None, n + '.' + f
     if arg.__class__.__name__ == 'FuncCall':
         n = arg.name.name
         n = n + '('
         for a in arg.args.exprs:
-            _, _, op = analysis_constraint_helper(a)
+            _, _, op = analyze_constraint_helper(a)
             n = n + op + ','
         n = n[:-1]
         n = n + ')'
         return None, None, n
-    if arg.__class__.__name__ == 'ArrayRef':
-        _, _, n = analysis_constraint_helper(arg.name)
-        _, _, f = analysis_constraint_helper(arg.subscript)
-        return None, None, n + '[' + f + ']'
-    if arg.__class__.__name__ == 'StructRef':
-        f = arg.field.name
-        _, _, n = analysis_constraint_helper(arg.name)
-        return None, None, n + '.' + f
-    if arg.__class__.__name__ == 'ID':
-        return None, None, arg.name
-    if arg.__class__.__name__ == 'Constant':
-        return None, None, arg.value
-    if arg.__class__.__name__ == 'UnaryOp':
-        _, _, n = analysis_constraint_helper(arg.expr)
-        return None, None, '-' + n
 
-def analysis_Struct(arg, struct):
+def analyze_structure(arg, struct):
     body = dict()
     for arg in arg.type:
         l = len(arg.name)
         n = [arg.name]
         t = list()
         arg = arg.type
-        _n, _t = analysis_Decl(arg, struct, n, t, l)
+        _n, _t = analyze_declaration(arg, struct, n, t, l)
         for i in range(len(_n)):
             body[_n[i]] = _t[i]
     return body
 
-def analysis_Decl(arg, struct, n, t, l):
+def analyze_declaration(arg, struct, n, t, l):
+    if arg.__class__.__name__ == 'FuncDecl':
+        return None, None
     if arg.__class__.__name__ == 'IdentifierType':
         t.append(arg.names[0])
         return n, t
@@ -61,10 +63,8 @@ def analysis_Decl(arg, struct, n, t, l):
         for i in n:
             _n.append(i+arg.declname[l:])
         n = _n
-        n, t = analysis_Decl(arg.type, struct, n, t, l)
+        n, t = analyze_declaration(arg.type, struct, n, t, l)
         return n, t
-    if arg.__class__.__name__ == 'FuncDecl':
-        return None, None
     if arg.__class__.__name__ == 'Struct':
         struct_name = arg.name
         _n = list()
@@ -77,7 +77,7 @@ def analysis_Decl(arg, struct, n, t, l):
     if arg.__class__.__name__ == 'ArrayDecl':
         num = arg.dim.value
         arg = arg.type
-        _n, _t = analysis_Decl(arg, struct, n, t, l)
+        _n, _t = analyze_declaration(arg, struct, n, t, l)
         n_temp = list()
         for i in range(int(num)):
             for j in n:
@@ -89,7 +89,7 @@ def analysis_Decl(arg, struct, n, t, l):
         return n, t
     if arg.__class__.__name__ == 'PtrDecl':
         arg = arg.type
-        _n, _t = analysis_Decl(arg, struct, n, t, l)
+        _n, _t = analyze_declaration(arg, struct, n, t, l)
         t_temp = list()
         for k in _t:
             t_temp.append(k+'_ptr')
@@ -97,95 +97,33 @@ def analysis_Decl(arg, struct, n, t, l):
         t = t_temp
         return n, t
 
-def analysis(path):
-    ast = parse_file(path)
-    input = dict()
-    struct = dict()
-    constraint = list()
-    for arg in ast:
-        if arg.__class__.__name__ == 'Typedef':
-            body = analysis_Struct(arg.type, struct)
-            struct[arg.name] = body
-        if arg.__class__.__name__ == 'Decl':
-            l = len(arg.name)
-            n = [arg.name]
-            t = list()
-            arg = arg.type
-            _n, _t = analysis_Decl(arg, struct, n, t, l)
-            if _n != None:
-                for i in range(len(_n)):
-                    input[_n[i]] = _t[i]
-        if arg.__class__.__name__ == 'FuncDef':
-            arg = arg.body
-            for c in arg.block_items:
-                con = list()
-                analysis_constraint(c, con)
-                con = " "+"".join(con)
-                constraint.append(con)
-    return input, constraint
-
-def revised(input, constraint):
-    _del = set()
-    or_cons = list()
-    for c in constraint:
-        if '_LENGTH' in c:
-            _del.add(c)
-            upper = 999
-            lower = 0
-            field = None
-            while '_LENGTH' in c:
-                idx = c.find('_LENGTH')
-                c = c[idx+8:]
-                idx = c.find(')')
-                field = c[:idx]
-                c = c[idx+2:]
-                idx = c.find('&&')
-                if c[0] == '<':
-                    if c[1] == ' ':
-                        upper = int(c[1: idx]) - 1
-                    if c[1] == '=':
-                        upper = int(c[3: idx])
-                if c[0] == '>':
-                    if c[1] == ' ':
-                        lower = int(c[1: idx]) + 1
-                    if c[1] == '=':
-                        lower = int(c[3: idx])
-                c = c[idx+3:]
-            num = random.randint(lower, upper)
-            t = input.pop(field)
-            idx = t.find('_ptr')
-            t = t[: idx]
-            for i in range(num):
-                input[field+'['+str(i)+']'] = t
-        else:
-            if '||' in c:
-                _del.add(c)
-                _c = ''.join(c)
-                temp = list()
-                while '||' in _c:
-                    idx = _c.find('||')
-                    temp.append(_c[:idx])
-                    _c = _c[idx+2:]
-                temp.append(_c)
-                index = random.randint(0, len(temp)-1)
-                constraint.append(temp[index])
-                or_cons.append(temp[index])
-            if '&&' in c and c not in _del:
-                _del.add(c)
-                _c = ''.join(c)
-                while '&&' in _c:
-                    idx = _c.find('&&')
-                    constraint.append(_c[:idx])
-                    if c in or_cons:
-                        or_cons.append(_c[:idx])
-                    _c = _c[idx+2:]
-                constraint.append(_c)
-                if c in or_cons:
-                    or_cons.remove(c)
-                    or_cons.append(_c)
-    for c in _del:
-        constraint.remove(c)
-    return input, constraint, or_cons
+# 分析原始文件
+def analyze_code(path):
+    structures = dict()
+    constraint_lines = list()
+    input_variables = dict()
+    ast_result = parse_file(path)
+    for argument in ast_result:
+        if argument.__class__.__name__ == 'Typedef':
+            body = analyze_structure(argument.type, structures)
+            structures[argument.name] = body
+        if argument.__class__.__name__ == 'Decl':
+            name_length = len(argument.name)
+            names = [argument.name]
+            types = list()
+            argument = argument.type
+            analyzed_names, analyzed_types = analyze_declaration(argument, structures, names, types, name_length)
+            if analyzed_names is not None:
+                for i in range(len(analyzed_names)):
+                    input_variables[analyzed_names[i]] = analyzed_types[i]
+        if argument.__class__.__name__ == 'FuncDef':
+            argument = argument.body
+            for block_item in argument.block_items:
+                constraints = list()
+                analyze_constraint(block_item, constraints)
+                constraint_line = " " + "".join(constraints)
+                constraint_lines.append(constraint_line)
+    return input_variables, constraint_lines
 
 def gen_matrix(input, constraint):
     matrix = np.zeros((len(constraint)+1, len(input)))
@@ -255,10 +193,3 @@ def matrix_split(matrix, input, constraint):
     for b in bubble_input:
         _bubble_input.append(list(b.keys()))
     return _bubble_input, bubble_matrix
-
-if __name__ == "__main__":
-    input, constraint = analysis('./resources/t2.c')
-    input, constraint, or_cons = revised(input, constraint)
-    matrix = gen_matrix(input, constraint)
-    bubble_input, bubble_matrix = matrix_split(matrix, input, constraint)
-    print(constraint)
