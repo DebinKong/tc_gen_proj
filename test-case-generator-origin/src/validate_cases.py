@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 from sympy.parsing.sympy_parser import parse_expr
 
 
-def open_file(path,c_files):
+def open_file(path):
     lines=[]
-    for file in c_files:
+    for file in Path("./case/"+path).glob('case*.txt'):
         lines.append([])
         f = open('./case/'+path+'/' + file.name, 'r')
         item_list = f.read().split("\n")
@@ -16,8 +16,8 @@ def open_file(path,c_files):
             lines[-1].append(float(item.split("=")[1]))
     return lines
 
-def validate_positive_cases(c_files, constraints, symbol):
-    output = open_file('positive',c_files)
+def validate_positive_cases(path, constraints, symbol):
+    output = open_file(path)
     var_dict = {}
     result_flag = 1
     unequal_constraints = []
@@ -89,8 +89,8 @@ def validate_positive_cases(c_files, constraints, symbol):
         plt.show()
 
 
-def validate_negative_cases(c_files, constraints, symbol):
-    output = open_file('negative',c_files)
+def validate_negative_cases(path, constraints, symbol):
+    output = open_file(path)
     var_dict = {}
     result_flag = 1
     unequal_constraints = []
@@ -163,6 +163,6 @@ if __name__ == "__main__":
         symbol.append(con.split("=")[0])
     symbol.pop() 
     print('验证正测试用例中...')
-    validate_positive_cases(Path("./case/positive").glob('case*.txt'), constraints.copy(), symbol)
+    validate_positive_cases('positive', constraints.copy(), symbol)
     print('验证负测试用例中...')
-    validate_negative_cases(Path("./case/negative").glob('case*.txt'), constraints.copy(), symbol)
+    validate_negative_cases('negative', constraints.copy(), symbol)
