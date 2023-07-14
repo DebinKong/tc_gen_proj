@@ -88,31 +88,43 @@ def revised(input, constraint):
     for c in _del:
         constraint.remove(c)
     return input, constraint, or_cons
+import random
 
-def mutate(constraint, or_cons):
+def mutate_constraint(constraint, or_constraints):
     while True:
-        idx = random.randint(0, len(constraint) - 1)
-        if (constraint[idx] in or_cons):
+        index = random.randint(0, len(constraint) - 1)
+        if constraint[index] in or_constraints:
             continue
-        if constraint[idx].find('>') != -1:
-            constraint[idx] = constraint[idx].replace('>', '<')
-            return constraint
-        if constraint[idx].find('<') != -1:
-            constraint[idx] = constraint[idx].replace('<', '>')
-            return constraint
-        if constraint[idx].find('>=') != -1:
-            constraint[idx] = constraint[idx].replace('>=', '<=')
-            return constraint
-        if constraint[idx].find('<=') != -1:
-            constraint[idx] = constraint[idx].replace('<=', '>=')
-            return constraint
-        if constraint[idx].find('==') != -1:
-            constraint[idx] = constraint[idx].replace('==', '!=')
-            return constraint
-        if constraint[idx].find('!=') != -1:
-            constraint[idx] = constraint[idx].replace('!=', '==')
-            return constraint
+        if '>' in constraint[index]:
+            constraint[index] = constraint[index].replace('>', '<')
+            break
+        if '<' in constraint[index]:
+            constraint[index] = constraint[index].replace('<', '>')
+            break
+        if '>=' in constraint[index]:
+            constraint[index] = constraint[index].replace('>=', '<=')
+            break
+        if '<=' in constraint[index]:
+            constraint[index] = constraint[index].replace('<=', '>=')
+            break
+        if '==' in constraint[index]:
+            constraint[index] = constraint[index].replace('==', '!=')
+            break
+        if '!=' in constraint[index]:
+            constraint[index] = constraint[index].replace('!=', '==')
+        return constraint
 
+
+import math
+
+def process_data(bubble_matrix, constraint, bubble_input, part_num, pool):
+    n = len(bubble_matrix)
+    results = list()
+    for i in range(len(bubble_matrix)):
+        result = pool.apply_async(task, (bubble_matrix, constraint, bubble_input, i, part_num),
+                                  error_callback=print_error)
+        results.append(result)
+    return results
 
 # 获得初始化参数
 def get_init_params():
@@ -121,12 +133,10 @@ def get_init_params():
     parser.add_argument('-n', type=int, default=2000, help='生成负例个数，默认2000个')
     return vars(parser.parse_args())
 
-
 # 获取线程池
 def getPool():
     # 线程池默认使用cpu核数
     return mp.Pool(int(mp.cpu_count()))
-
 
 # 程序入口
 if __name__ == "__main__":
@@ -151,44 +161,39 @@ if __name__ == "__main__":
 
     # 读取原始文件，解析出输入变量和约束
     time_start = time.time()
-    input, constraint = analyze_code("originFile.c")
+    input_var, constraint = analyze_code("origin_file.c")
     # 对原始约束进行化简，拆分&&、|｜约束，生成正例约束
-    input, pos_constraint, or_constraint = revised(input, constraint.copy())
+    input_var, pos_constraint, or_constraint = revised(input_var, constraint.copy())
+    # 正例约束写入文件，供验证程序使用
+    with open(test_case_result_folder+'/constraints', 'w') as f:
+        for line in pos_constraint:
+            f.write(line + '\n')
     # 随机从正例约束中选择一条取非，生成负例约束
-    neg_constraint = mutate(pos_constraint.copy(), or_constraint)
+    neg_constraint = mutate_constraint(pos_constraint.copy(), or_constraint)
     # 生成约束-变量关联矩阵
-    pos_matrix = gen_matrix(input, pos_constraint)
-    neg_matrix = gen_matrix(input, neg_constraint)
+    pos_matrix = generate_matrix(input_var, pos_constraint)
+    neg_matrix = generate_matrix(input_var, neg_constraint)
     # 拆分关联矩阵
-    pos_bubble_input, pos_bubble_matrix = matrix_split(pos_matrix, input, pos_constraint)
-    neg_bubble_input, neg_bubble_matrix = matrix_split(neg_matrix, input, neg_constraint)
-    pos_n = len(pos_bubble_matrix)
-    neg_n = len(neg_bubble_matrix)
-    pos_part_num = math.ceil(5 * pos_num ** (1 / pos_n))
-    neg_part_num = math.ceil(5 * neg_num ** (1 / neg_n))
-    pos_bubbles = list()
-    pos_results = list()
-    neg_bubbles = list()
-    neg_results = list()
-
-    pool = getPool()
+    pos_bubble_input, pos_bubble_matrix = split_matrix(pos_matrix, input_var)
+    neg_bubble_input, neg_bubble_matrix = split_matrix(neg_matrix, input_var)
 
     time_init = time.time()
     print("文件解析及初始化完成（{:.3f}s）...".format(time_init - time_start))
 
     # solute
-    for i in range(len(pos_bubble_matrix)):
-        pos_result = pool.apply_async(task, (pos_bubble_matrix, pos_constraint, pos_bubble_input, i, pos_part_num),
-                                      error_callback=print_error)
-        pos_results.append(pos_result)
-    for i in range(len(neg_bubble_matrix)):
-        neg_result = pool.apply_async(task, (neg_bubble_matrix, neg_constraint, neg_bubble_input, i, neg_part_num),
-                                      error_callback=print_error)
-        neg_results.append(neg_result)
+    pool = getPool()
+    pos_n = len(pos_bubble_matrix)
+    pos_part_num = math.ceil(5 * pos_num ** (1 / pos_n))
+    pos_results = process_data(pos_bubble_matrix, pos_constraint, pos_bubble_input, pos_part_num, pool)
+
+    neg_n = len(neg_bubble_matrix)
+    neg_part_num = math.ceil(5 * neg_num ** (1 / neg_n))
+    neg_results = process_data(neg_bubble_matrix, neg_constraint, neg_bubble_input, neg_part_num, pool)
 
     pool.close()
     pool.join()
-
+    pos_bubbles = list()
+    neg_bubbles = list()
     for result in pos_results:
         pos_bubbles.append(result.get())
     for result in neg_results:
