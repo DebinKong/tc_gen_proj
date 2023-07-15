@@ -198,17 +198,17 @@ if __name__ == "__main__":
     time_solute = time.time()
     print("约束求解完成（{:.3f}s）...".format(time_solute - time_init))
 
-    # merge and generate
+    # 多线程合并汇总求解结果，生成测试用例
     pool = getPool()
-    pos_count = generator(pos_split_case, positive_case, pos_total_num, pool)
-    neg_count = generator(neg_split_case, negative_case, neg_total_num, pool)
+    pos_count = generat_testcase(pos_split_case, positive_case, pos_total_num, pool)
+    neg_count = generat_testcase(neg_split_case, negative_case, neg_total_num, pool)
     pool.close()
     pool.join()
 
-    count = pos_count + neg_count
+    total_count = pos_count + neg_count
     time_gen = time.time()
     print("生成测试用例完成（{:.3f}s）...".format(time_gen - time_solute))
     print(
         "总计用时：{:.3f}s\n测试用例个数：{}，正测试用例:{}个，负测试用例:{}个，正测试用例比例:{:.3f}%\n平均速度:{:.3f}个/s".format(
-            time_gen - time_start, count, pos_count, neg_count, pos_count / count * 100,
-            count / (time_gen - time_start)))
+            time_gen - time_start, total_count, pos_count, neg_count, pos_count / total_count * 100,
+            total_count / (time_gen - time_start)))
