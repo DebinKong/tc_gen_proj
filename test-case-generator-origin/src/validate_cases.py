@@ -153,10 +153,11 @@ def validate_negative_cases(path, constraints, symbol):
 
 if __name__ == "__main__":
     print('正在初始化...')
-    constraints_IO = open("./case/constraints.txt")
+    test_case_result_folder = './test_case_result'
+    constraints_IO = open(test_case_result_folder+"/constraints")
     constraints = constraints_IO.read().split("\n")
     constraints.pop()
-    case0_file_IO = open("./case/positive/case0.txt")
+    case0_file_IO = open(test_case_result_folder+"/positive_case/case0.txt")
     case0_file = case0_file_IO.read().split("\n")
     symbol = []
     for con in case0_file:
