@@ -5,10 +5,8 @@ from find_solution import *
 from gen_matrix import *
 from gen_test_case import *
 
-
 def print_error(value):
     print('error:', value)
-
 
 def convert(output, symbol):
     contents = set()
@@ -18,7 +16,6 @@ def convert(output, symbol):
             re = re + symbol[j] + '=' + str(output[i][j]) + '\n'
         contents.add(re)
     return contents
-
 
 def task(bubble_matrix, constraint, bubble_input, idx, number=1):
     output = get_test_cases(bubble_matrix[idx].astype(int).copy(), constraint.copy(), bubble_input[idx].copy(),
@@ -112,8 +109,7 @@ def mutate_constraint(constraint, or_constraints):
             break
         if '!=' in constraint[index]:
             constraint[index] = constraint[index].replace('!=', '==')
-        return constraint
-
+    return constraint
 
 import math
 
@@ -142,9 +138,9 @@ def getPool():
 if __name__ == "__main__":
     params = get_init_params()
 
-    # 获取正例和负例个数
-    pos_num = params['p']
-    neg_num = params['n']
+    # 获取正例和负例数
+    pos_total_num = params['p']
+    neg_total_num = params['n']
 
     test_case_result_folder = './test_case_result'
     positive_case = test_case_result_folder + "/positive_case"
@@ -171,41 +167,41 @@ if __name__ == "__main__":
     # 随机从正例约束中选择一条取非，生成负例约束
     neg_constraint = mutate_constraint(pos_constraint.copy(), or_constraint)
     # 生成约束-变量关联矩阵
-    pos_matrix = generate_matrix(input_var, pos_constraint)
-    neg_matrix = generate_matrix(input_var, neg_constraint)
+    pos_incidence_matrix = generate_matrix(input_var, pos_constraint)
+    neg_incicende_matrix = generate_matrix(input_var, neg_constraint)
     # 拆分关联矩阵
-    pos_bubble_input, pos_bubble_matrix = split_matrix(pos_matrix, input_var)
-    neg_bubble_input, neg_bubble_matrix = split_matrix(neg_matrix, input_var)
+    pos_split_input, pos_split_matrix = split_matrix(pos_incidence_matrix, input_var)
+    neg_split_input, neg_split_matrix = split_matrix(neg_incicende_matrix, input_var)
 
     time_init = time.time()
     print("文件解析及初始化完成（{:.3f}s）...".format(time_init - time_start))
 
-    # solute
+    # 多线程求解正例约束
     pool = getPool()
-    pos_n = len(pos_bubble_matrix)
-    pos_part_num = math.ceil(5 * pos_num ** (1 / pos_n))
-    pos_results = process_data(pos_bubble_matrix, pos_constraint, pos_bubble_input, pos_part_num, pool)
-
-    neg_n = len(neg_bubble_matrix)
-    neg_part_num = math.ceil(5 * neg_num ** (1 / neg_n))
-    neg_results = process_data(neg_bubble_matrix, neg_constraint, neg_bubble_input, neg_part_num, pool)
+    pos_n = len(pos_split_matrix)
+    pos_part_num = math.ceil(5 * pos_total_num ** (1 / pos_n))
+    pos_results = process_data(pos_split_matrix, pos_constraint, pos_split_input, pos_part_num, pool)
+    # 多线程求解负例约束
+    neg_n = len(neg_split_matrix)
+    neg_part_num = math.ceil(5 * neg_total_num ** (1 / neg_n))
+    neg_results = process_data(neg_split_matrix, neg_constraint, neg_split_input, neg_part_num, pool)
 
     pool.close()
     pool.join()
-    pos_bubbles = list()
-    neg_bubbles = list()
+    pos_split_case = list()
+    neg_split_case = list()
     for result in pos_results:
-        pos_bubbles.append(result.get())
+        pos_split_case.append(result.get())
     for result in neg_results:
-        neg_bubbles.append(result.get())
+        neg_split_case.append(result.get())
 
     time_solute = time.time()
     print("约束求解完成（{:.3f}s）...".format(time_solute - time_init))
 
     # merge and generate
     pool = getPool()
-    pos_count = generator(pos_bubbles, positive_case, pos_num, pool)
-    neg_count = generator(neg_bubbles, negative_case, neg_num, pool)
+    pos_count = generator(pos_split_case, positive_case, pos_total_num, pool)
+    neg_count = generator(neg_split_case, negative_case, neg_total_num, pool)
     pool.close()
     pool.join()
 
